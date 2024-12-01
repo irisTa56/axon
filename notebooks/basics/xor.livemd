@@ -2,13 +2,13 @@
 
 ```elixir
 Mix.install([
-  {:axon, "~> 0.3.0"},
-  {:nx, "~> 0.4.0", override: true},
-  {:exla, "~> 0.4.0"},
-  {:kino_vega_lite, "~> 0.1.6"}
+  {:axon, "~> 0.7"},
+  {:nx, "~> 0.9"},
+  {:exla, "~> 0.9"},
+  {:kino_vega_lite, "~> 0.1"}
 ])
 
-Nx.Defn.default_options(compiler: EXLA)
+Nx.global_default_backend(EXLA.Backend)
 
 alias VegaLite, as: Vl
 ```
@@ -30,8 +30,8 @@ x1_input = Axon.input("x1", shape: {nil, 1})
 x2_input = Axon.input("x2", shape: {nil, 1})
 
 model =
-  x1_input
-  |> Axon.concatenate(x2_input)
+  Axon.concatenate(x1_input, x2_input)
+  # Applying dense, i.e., reshaping with trainable kernel weights and bias
   |> Axon.dense(8, activation: :tanh)
   |> Axon.dense(1, activation: :sigmoid)
 ```
@@ -46,12 +46,18 @@ The training works with batches of examples, so we *repeatedly* generate a whole
 batch_size = 32
 
 data =
-  Stream.repeatedly(fn ->
-    x1 = Nx.random_uniform({batch_size, 1}, 0, 2)
-    x2 = Nx.random_uniform({batch_size, 1}, 0, 2)
-    y = Nx.logical_xor(x1, x2)
+  Nx.Random.key(42)
+  |> Stream.unfold(fn key0 ->
+    generate = fn key ->
+      {x, new_key} = Nx.Random.uniform(key, 0.0, 2.0, shape: {batch_size, 1})
+      {Nx.as_type(x, :u8), new_key}
+    end
 
-    {%{"x1" => x1, "x2" => x2}, y}
+    {x1, key1} = generate.(key0)
+    {x2, key2} = generate.(key1)
+    x = %{"x1" => x1, "x2" => x2}
+    y = Nx.logical_xor(x1, x2)
+    {{x, y}, key2}
   end)
 ```
 
@@ -71,7 +77,7 @@ epochs = 10
 params =
   model
   |> Axon.Loop.trainer(:binary_cross_entropy, :sgd)
-  |> Axon.Loop.run(data, %{}, epochs: epochs, iterations: 1000)
+  |> Axon.Loop.run(data, Axon.ModelState.empty(), epochs: epochs, iterations: 1000)
 ```
 
 ## Trying the model
