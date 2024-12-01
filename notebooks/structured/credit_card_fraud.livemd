@@ -2,11 +2,11 @@
 
 ```elixir
 Mix.install([
-  {:axon, "~> 0.3.0"},
-  {:nx, "~> 0.4.0", override: true},
-  {:exla, "~> 0.4.0"},
-  {:explorer, "~> 0.3.1"},
-  {:kino, "~> 0.7.0"}
+  {:axon, "~> 0.7"},
+  {:nx, "~> 0.9"},
+  {:exla, "~> 0.9"},
+  {:explorer, "~> 0.10"},
+  {:kino, "~> 0.14"}
 ])
 
 Nx.Defn.default_options(compiler: EXLA)
@@ -52,8 +52,8 @@ defmodule CredidCard.Data do
   end
 
   def split_features_targets(df) do
-    features = DataFrame.select(df, &(&1 == "Class"), :drop)
-    targets = DataFrame.select(df, &(&1 == "Class"), :keep)
+    features = DataFrame.discard(df, ["Class"])
+    targets = DataFrame.select(df, ["Class"])
     {features, targets}
   end
 
@@ -92,11 +92,13 @@ train_inputs =
   train_features
   |> CredidCard.Data.df_to_tensor()
   |> CredidCard.Data.normalize_features()
+  |> Nx.as_type(:f32)
 
 test_inputs =
   test_features
   |> CredidCard.Data.df_to_tensor()
   |> CredidCard.Data.normalize_features()
+  |> Nx.as_type(:f32)
 
 train_targets = CredidCard.Data.df_to_tensor(train_targets)
 test_targets = CredidCard.Data.df_to_tensor(test_targets)
@@ -156,7 +158,7 @@ optimizer = Polaris.Optimizers.adam(learning_rate: 1.0e-2)
 params =
   model
   |> Axon.Loop.trainer(loss, optimizer)
-  |> Axon.Loop.run(batched_train, %{}, epochs: 30, compiler: EXLA)
+  |> Axon.Loop.run(batched_train, Axon.ModelState.empty(), epochs: 30, compiler: EXLA)
 
 :ok
 ```
@@ -197,7 +199,7 @@ model
 |> Axon.Loop.metric(:true_negatives, "tn", :running_sum)
 |> Axon.Loop.metric(:false_positives, "fp", :running_sum)
 |> Axon.Loop.metric(:false_negatives, "fn", :running_sum)
-|> Axon.Loop.handle(:epoch_completed, summarize)
+|> Axon.Loop.handle_event(:epoch_completed, summarize)
 |> Axon.Loop.run(batched_test, params, compiler: EXLA)
 
 :ok
