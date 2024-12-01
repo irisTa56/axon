@@ -2,13 +2,13 @@
 
 ```elixir
 Mix.install([
-  {:axon, "~> 0.3.0"},
-  {:nx, "~> 0.4.0", override: true},
-  {:exla, "~> 0.4.0"},
-  {:scidata, "~> 0.1.9"}
+  {:axon, "~> 0.7"},
+  {:nx, "~> 0.9"},
+  {:exla, "~> 0.9"},
+  {:scidata, "~> 0.1"}
 ])
 
-Nx.Defn.default_options(compiler: EXLA)
+Nx.global_default_backend(EXLA.Backend)
 ```
 
 ## Introduction
@@ -100,7 +100,7 @@ params =
   model
   |> Axon.Loop.trainer(:mean_squared_error, :adam)
   |> Axon.Loop.metric(:mean_absolute_error, "Error")
-  |> Axon.Loop.run(train_batches, %{}, epochs: epochs, compiler: EXLA)
+  |> Axon.Loop.run(train_batches, Axon.ModelState.empty(), epochs: epochs, compiler: EXLA)
 ```
 
 ## Extra: losses
@@ -113,7 +113,7 @@ To better understand what is mean absolute error (MAE) and mean square error (MS
 mean_square_error = fn y_pred, y ->
   y_pred
   |> Nx.subtract(y)
-  |> Nx.power(2)
+  |> Nx.pow(2)
   |> Nx.mean()
 end
 
@@ -129,7 +129,9 @@ We will work with a sample image of a shoe, a slightly noised version of that im
 
 ```elixir
 shoe_image = train_images[0]
-noised_shoe_image = Nx.add(shoe_image, Nx.random_normal(shoe_image, 0.0, 0.05))
+key = Nx.Random.key(42)
+{noise, _key} = Nx.Random.normal(key, 0.0, 0.05, shape: Nx.shape(shoe_image))
+noised_shoe_image = Nx.add(shoe_image, noise)
 other_image = train_images[1]
 :ok
 ```
@@ -163,7 +165,7 @@ And a different image:
 
 As we can see, the noised image has a non-zero MSE and MAE but is much smaller than the error of two completely different pictures. In other words, both of these error types measure the level of similarity between images. A small error implies decent prediction values. On the other hand, a large error value suggests poor quality of predictions.
 
-If you look at our implementation of MAE and MSE, you will notice that they are very similar. MAE and MSE can also be called the $L_1$ and $L_2$ loss respectively for the $L_1$ and $L_2$ norm. The $L_2$ loss (MSE) is typically preferred because it's a smoother function whereas $L_1$ is often difficult to optimize with stochastic gradient descent (SGD).
+If you look at our implementation of MAE and MSE, you will notice that they are very similar. MAE and MSE can also be called the $L_1$ and $L_2$ loss respectively for the $L_1$ and $L_2$ norm. *The $L_2$ loss (MSE) is typically preferred because it's a smoother function whereas $L_1$ is often difficult to optimize with stochastic gradient descent (SGD).*
 
 ## Inference
 
