@@ -8,6 +8,7 @@ Mix.install([
   {:scidata, "~> 0.1"}
 ])
 
+Nx.Defn.default_options(compiler: EXLA)
 Nx.global_default_backend(EXLA.Backend)
 ```
 
