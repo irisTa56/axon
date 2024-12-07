@@ -2,16 +2,16 @@
 
 ```elixir
 Mix.install([
-  {:axon, "~> 0.6.1"},
-  {:kino_vega_lite, "~> 0.1.13"},
-  {:nx, "~> 0.7.3"},
-  {:tucan, "~> 0.3.1"},
-  {:polaris, "~> 0.1.0"},
-  {:exla, "~> 0.7.3"},
-  {:req, "~> 0.5.2"},
-  {:vega_lite, "~> 0.1.9"},
+  {:axon, "~> 0.7"},
+  {:kino_vega_lite, "~> 0.1"},
+  {:nx, "~> 0.9"},
+  {:tucan, "~> 0.4"},
+  {:polaris, "~> 0.1"},
+  {:exla, "~> 0.9"},
+  {:req, "~> 0.5"},
+  {:vega_lite, "~> 0.1"},
   {:nimble_csv, "~> 1.2"},
-  {:scholar, "~> 0.3.1"}
+  {:scholar, "~> 0.3"}
 ])
 
 Nx.global_default_backend(EXLA.Backend)
@@ -122,27 +122,21 @@ In each pair, the input consists of a sequence of $T$ consecutive values from th
 sliding_window = fn series, win_size ->
   {p} = Nx.shape(series)
 
-  x_idx =
+  start_idx =
     series
     |> Nx.shape()
     |> Nx.iota()
-    |> Nx.reshape({:auto, 1})
+    |> Nx.slice_along_axis(0, p - win_size)
     |> Nx.vectorize(:elements)
 
-  y_idx =
-    series
-    |> Nx.shape()
-    |> Nx.iota()
-    |> Nx.add(win_size)
-    |> Nx.reshape({:auto, 1})
-    |> Nx.slice([0, 0], [p - win_size, 1])
+  output_idx = Nx.add(start_idx, win_size)
 
   x =
-    Nx.slice(series, [x_idx[0]], [win_size])
+    series
+    |> Nx.slice([start_idx], [win_size])
     |> Nx.devectorize(keep_names: false)
-    |> Nx.slice([0, 0], [p - win_size, win_size])
 
-  y = Nx.gather(series, y_idx, axes: [0])
+  y = Nx.devectorize(series[output_idx], keep_names: false)
 
   {x, y}
 end
@@ -237,7 +231,7 @@ We are ready to create our training loop and run it. Since our network is simple
 optimizer = Polaris.Optimizers.sgd(learning_rate: 0.04)
 loop = Axon.Loop.trainer(model, :mean_squared_error, optimizer)
 
-trained_model_state = Axon.Loop.run(loop, train_data, %{}, epochs: 100)
+trained_model_state = Axon.Loop.run(loop, train_data, Axon.ModelState.empty(), epochs: 100)
 ```
 
 Finally, we make predictions over the train and test sets so we can evaluate our model.
