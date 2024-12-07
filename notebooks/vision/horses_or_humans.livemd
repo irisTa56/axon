@@ -2,12 +2,12 @@
 
 ```elixir
 Mix.install([
-  {:axon, "~> 0.6.0"},
-  {:nx, "~> 0.6.0"},
-  {:exla, "~> 0.6.0"},
-  {:stb_image, "~> 0.6.0"},
-  {:req, "~> 0.4.5"},
-  {:kino, "~> 0.11.0"}
+  {:axon, "~> 0.7"},
+  {:nx, "~> 0.9"},
+  {:exla, "~> 0.9"},
+  {:stb_image, "~> 0.6"},
+  {:req, "~> 0.5"},
+  {:kino, "~> 0.14"}
 ])
 
 Nx.global_default_backend(EXLA.Backend)
@@ -143,7 +143,7 @@ The next step is creating our model. In this notebook, we choose the classic Con
 
 <!-- livebook:{"break_markdown":true} -->
 
-|            ![](https://miroslawmamczur.pl/wp-content/uploads/2021/03/06.gif)            |
+| ![](https://miroslawmamczur.pl/wp-content/uploads/2021/03/06.gif)                       |
 | :-------------------------------------------------------------------------------------: |
 | Figure 1: A step-by-step visualization of a convolution layer for `kernel_size: {3, 3}` |
 
@@ -155,7 +155,7 @@ The next step is creating our model. In this notebook, we choose the classic Con
 
 | ![](https://production-media.paperswithcode.com/methods/MaxpoolSample2.png) |
 | :-------------------------------------------------------------------------: |
-|          Figure 2: Max pooling operation for `kernel_size: {2, 2}`          |
+| Figure 2: Max pooling operation for `kernel_size: {2, 2}`                   |
 
 <!-- livebook:{"break_markdown":true} -->
 
@@ -163,7 +163,7 @@ The next step is creating our model. In this notebook, we choose the classic Con
 
 <!-- livebook:{"break_markdown":true} -->
 
-|  ![](https://miro.medium.com/max/1400/1*KkqxjvXTIV_b365B41ltfg.png)   |
+| ![](https://miro.medium.com/max/1400/1*KkqxjvXTIV_b365B41ltfg.png)    |
 | :-------------------------------------------------------------------: |
 | Figure 3: The difference between standard dropout and spatial dropout |
 
@@ -205,7 +205,7 @@ params =
   model
   |> Axon.Loop.trainer(:categorical_cross_entropy, optimizer, log: 1)
   |> Axon.Loop.metric(:accuracy)
-  |> Axon.Loop.run(data, %{}, epochs: 10, iterations: batches_per_epoch)
+  |> Axon.Loop.run(data, Axon.ModelState.empty(), epochs: 10, iterations: batches_per_epoch)
 ```
 
 <!-- livebook:{"branch_parent_index":5} -->
@@ -220,7 +220,7 @@ centralized_optimizer = Polaris.Updates.compose(Polaris.Updates.centralize(), op
 model
 |> Axon.Loop.trainer(:categorical_cross_entropy, centralized_optimizer, log: 1)
 |> Axon.Loop.metric(:accuracy)
-|> Axon.Loop.run(data, %{}, epochs: 10, iterations: batches_per_epoch)
+|> Axon.Loop.run(data, Axon.ModelState.empty(), epochs: 10, iterations: batches_per_epoch)
 ```
 
 ## Inference
