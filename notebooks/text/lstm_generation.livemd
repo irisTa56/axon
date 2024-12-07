@@ -2,10 +2,10 @@
 
 ```elixir
 Mix.install([
-  {:axon, "~> 0.3.0"},
-  {:nx, "~> 0.4.0", override: true},
-  {:exla, "~> 0.4.0"},
-  {:req, "~> 0.3.1"}
+  {:axon, "~> 0.7"},
+  {:nx, "~> 0.9"},
+  {:exla, "~> 0.9"},
+  {:req, "~> 0.5"}
 ])
 
 Nx.Defn.default_options(compiler: EXLA)
@@ -172,8 +172,11 @@ IO.puts("Total batches: #{Enum.count(train_batches)}")
 
 params =
   model
-  |> Axon.Loop.trainer(:categorical_cross_entropy, Polaris.Optimizers.adam(learning_rate: 0.001))
-  |> Axon.Loop.run(Stream.zip(train_batches, result_batches), %{}, epochs: 20, compiler: EXLA)
+  |> Axon.Loop.trainer(:categorical_cross_entropy, Polaris.Optimizers.adam())
+  |> Axon.Loop.run(Stream.zip(train_batches, result_batches), Axon.ModelState.empty(),
+    epochs: 20,
+    compiler: EXLA
+  )
 
 :ok
 ```
@@ -251,8 +254,11 @@ IO.puts("Total batches: #{Enum.count(train_batches)}")
 
 new_params =
   new_model
-  |> Axon.Loop.trainer(:categorical_cross_entropy, Polaris.Optimizers.adam(learning_rate: 0.001))
-  |> Axon.Loop.run(Stream.zip(train_batches, result_batches), %{}, epochs: 50, compiler: EXLA)
+  |> Axon.Loop.trainer(:categorical_cross_entropy, Polaris.Optimizers.adam())
+  |> Axon.Loop.run(Stream.zip(train_batches, result_batches), Axon.ModelState.empty(),
+    epochs: 50,
+    compiler: EXLA
+  )
 
 :ok
 ```
