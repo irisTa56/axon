@@ -195,6 +195,37 @@ defmodule Axon.LoopTest do
       assert_equal(transform.(state), %{"my_metric" => {}})
     end
 
+    test "evaluator/1 returns a supervised evaluator loop with multi-loss" do
+      inp = %{"input_0" => Nx.tensor([[1]]), "input_1" => Nx.tensor([[1]])}
+      tar = {Nx.tensor([[2]]), Nx.tensor([[2]])}
+
+      model =
+        {Axon.input("input_0", shape: {nil, 1}), Axon.input("input_1", shape: {nil, 1})}
+        |> Axon.container()
+
+      {init_fn, _} = Axon.build(model)
+
+      model_state = init_fn.(inp, Axon.ModelState.empty())
+
+      expected_pred = Axon.predict(model, model_state, inp)
+
+      assert %Loop{init: init_fn, step: update_fn, output_transform: transform} =
+               Loop.evaluator(model)
+
+      assert %{model_state: _, y_true: _, y_pred: _} =
+               pstate = init_fn.({inp, tar}, model_state)
+
+      state = %State{step_state: pstate, metrics: %{"my_metric" => {}}}
+
+      assert %{y_true: returned_tar, y_pred: pred} =
+               apply(Nx.Defn.jit(update_fn), [{inp, tar}, pstate])
+
+      assert_equal(returned_tar, tar)
+      assert_equal(pred, expected_pred)
+
+      assert_equal(transform.(state), %{"my_metric" => {}})
+    end
+
     test "evaluator/1 runs a supervised evaluator loop" do
       inp = Nx.tensor([[1]])
 
