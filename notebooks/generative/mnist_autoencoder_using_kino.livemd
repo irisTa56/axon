@@ -2,15 +2,18 @@
 
 ```elixir
 Mix.install([
-  {:exla, "~> 0.4.0"},
-  {:nx, "~> 0.4.0", override: true},
-  {:axon, "~> 0.3.0"},
-  {:req, "~> 0.3.1"},
-  {:kino, "~> 0.7.0"},
-  {:scidata, "~> 0.1.9"},
-  {:stb_image, "~> 0.5.2"},
-  {:table_rex, "~> 3.1.1"}
+  {:axon, git: "https://github.com/elixir-nx/axon.git"},
+  {:nx, "~> 0.9"},
+  {:exla, "~> 0.9"},
+  {:req, "~> 0.5"},
+  {:kino, "~> 0.14"},
+  {:scidata, "~> 0.1"},
+  {:stb_image, "~> 0.6"},
+  {:table_rex, "~> 3.1"}
 ])
+
+Nx.global_default_backend(EXLA.Backend)
+Nx.Defn.global_default_options(compiler: EXLA)
 ```
 
 ## Introduction
@@ -145,9 +148,11 @@ defmodule Noiser do
   @noise_factor 0.4
 
   defn add_noise(images) do
-    @noise_factor
-    |> Nx.multiply(Nx.random_normal(images))
-    |> Nx.add(images)
+    key = Nx.Random.key(:erlang.unique_integer())
+    {noise, _key} = Nx.Random.normal(key, 0.0, @noise_factor, shape: Nx.shape(images))
+
+    images
+    |> Nx.add(noise)
     |> Nx.clip(0.0, 1.0)
   end
 end
@@ -197,9 +202,9 @@ Looks right (and tricky). Let's see how the model does.
 ```elixir
 params =
   model
-  |> Axon.Loop.trainer(:mean_squared_error, Polaris.Optimizers.adamw(learning_rate: 0.001))
+  |> Axon.Loop.trainer(:mean_squared_error, Polaris.Optimizers.adamw())
   |> Axon.Loop.validate(model, test_data)
-  |> Axon.Loop.run(train_data, %{}, epochs: 20, compiler: EXLA)
+  |> Axon.Loop.run(train_data, Axon.ModelState.empty(), epochs: 20, compiler: EXLA)
 
 :ok
 ```
@@ -313,9 +318,9 @@ end
 params =
   model
   |> Axon.Loop.trainer(:mean_squared_error, Polaris.Optimizers.adamw(learning_rate: 0.001))
-  |> Axon.Loop.handle(:iteration_completed, render_example_handler, every: 450)
+  |> Axon.Loop.handle_event(:iteration_completed, render_example_handler, every: 450)
   |> Axon.Loop.validate(model, test_data)
-  |> Axon.Loop.run(train_data, %{}, epochs: 20, compiler: EXLA)
+  |> Axon.Loop.run(train_data, Axon.ModelState.empty(), epochs: 20, compiler: EXLA)
 
 :ok
 ```

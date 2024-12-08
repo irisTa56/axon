@@ -2,24 +2,22 @@
 
 ```elixir
 Mix.install([
-  {:exla, "~> 0.4.0"},
-  {:nx, "~> 0.4.0", override: true},
-  {:axon, "~> 0.3.0"},
-  {:req, "~> 0.3.1"},
-  {:kino, "~> 0.7.0"},
-  {:scidata, "~> 0.1.9"},
-  {:stb_image, "~> 0.5.2"},
-  {:kino_vega_lite, "~> 0.1.6"},
-  {:vega_lite, "~> 0.1.6"},
-  {:table_rex, "~> 3.1.1"}
+  {:axon, git: "https://github.com/elixir-nx/axon.git"},
+  {:nx, "~> 0.9"},
+  {:exla, "~> 0.9"},
+  {:req, "~> 0.5"},
+  {:kino, "~> 0.14"},
+  {:scidata, "~> 0.1"},
+  {:stb_image, "~> 0.6"},
+  {:kino_vega_lite, "~> 0.1"},
+  {:vega_lite, "~> 0.1"},
+  {:table_rex, "~> 3.1"}
 ])
 
-alias VegaLite, as: Vl
-
-# This speeds up all our `Nx` operations without having to use `defn`
 Nx.global_default_backend(EXLA.Backend)
+Nx.Defn.global_default_options(compiler: EXLA)
 
-:ok
+alias VegaLite, as: Vl
 ```
 
 ## Introduction
@@ -75,9 +73,11 @@ defmodule Data do
   Converts a tensor of images into random batches of paired images for model training
   """
   def prepare_training_data(images, batch_size) do
-    Stream.flat_map([nil], fn nil ->
-      images |> Nx.shuffle(axis: :images) |> Nx.to_batched(batch_size)
-    end)
+    key = Nx.Random.key(:erlang.unique_integer())
+    {shuffled, _key} = Nx.Random.shuffle(key, images, axis: :images)
+
+    shuffled
+    |> Nx.to_batched(batch_size)
     |> Stream.map(fn batch -> {batch, batch} end)
   end
 end
@@ -192,7 +192,7 @@ defmodule KinoAxon do
       end
     end
 
-    Axon.Loop.handle(loop, :iteration_completed, handler)
+    Axon.Loop.handle_event(loop, :iteration_completed, handler)
   end
 
   @doc """
@@ -224,7 +224,7 @@ defmodule KinoAxon do
       {:continue, state}
     end
 
-    Axon.Loop.handle(loop, :epoch_completed, handler)
+    Axon.Loop.handle_event(loop, :epoch_completed, handler)
   end
 end
 ```
@@ -251,12 +251,12 @@ end
 
 params =
   model
-  |> Axon.Loop.trainer(:mean_squared_error, Polaris.Optimizers.adamw(learning_rate: 0.001))
+  |> Axon.Loop.trainer(:mean_squared_error, Polaris.Optimizers.adamw())
   |> KinoAxon.kino_early_stop()
-  |> Axon.Loop.handle(:iteration_completed, render_example_handler, every: 450)
+  |> Axon.Loop.handle_event(:iteration_completed, render_example_handler, every: 450)
   |> Axon.Loop.validate(model, test_data)
   |> KinoAxon.plot_losses()
-  |> Axon.Loop.run(train_data, %{}, epochs: 40, compiler: EXLA)
+  |> Axon.Loop.run(train_data, Axon.ModelState.empty(), epochs: 40, compiler: EXLA)
 
 :ok
 ```
@@ -345,10 +345,9 @@ new_latents = Nx.multiply(Nx.iota({num_steps + 1, 1}), step) |> Nx.add(latents[0
 reconstructed_images = Axon.predict(decoder, params, new_latents)
 
 reconstructed_images =
-  Nx.reshape(
+  Nx.rename(
     reconstructed_images,
-    Nx.shape(reconstructed_images),
-    names: [:images, :channels, :height, :width]
+    [:images, :channels, :height, :width]
   )
 
 Stream.interval(div(5000, num_steps))
@@ -374,15 +373,20 @@ defmodule Vae do
 
   @latent_features 10
 
-  defp sampling_layer(%Axon{} = input, _opts \\ []) do
-    Axon.layer(&sampling_layer_impl/2, [input], name: "sampling_layer", op_name: :sample)
+  defp sampling_layer(%Axon{} = input, opts) do
+    Axon.layer(
+      &sampling_layer_impl/2,
+      [input],
+      [name: "sampling_layer", op_name: :sample] ++ opts
+    )
   end
 
-  defnp sampling_layer_impl(x, _opts \\ []) do
+  defnp sampling_layer_impl(x, opts \\ []) do
     mu = x[[0..-1//1, 0, 0..-1//1]]
     log_var = x[[0..-1//1, 1, 0..-1//1]]
     std_dev = Nx.exp(0.5 * log_var)
-    eps = Nx.random_normal(std_dev)
+    key = Nx.Random.key(opts[:random_key_seed])
+    {eps, _key} = Nx.Random.normal(key, shape: Nx.shape(std_dev))
     sample = mu + std_dev * eps
     Nx.stack([sample, mu, std_dev], axis: 1)
   end
@@ -399,7 +403,7 @@ defmodule Vae do
     |> Axon.dense(@latent_features * 2, name: "bottleneck_layer")
     # Split up the mu and logvar
     |> Axon.reshape({:auto, 2, @latent_features})
-    |> sampling_layer()
+    |> sampling_layer(random_key_seed: :erlang.unique_integer())
   end
 
   def encoder() do
@@ -472,14 +476,49 @@ render_example_handler = fn state ->
   {:continue, state}
 end
 
+validation_loop = fn %{metrics: metrics, step_state: step_state} = state ->
+  %{model_state: model_state} = step_state
+  {_, forward_model_fn} = Axon.build(model, mode: :inference)
+
+  init_fn = fn {input, target}, state ->
+    %{
+      model_state: state,
+      y_true: Axon.Shared.zeros_like(target),
+      y_pred: Axon.Shared.zeros_like(forward_model_fn.(state, input))
+    }
+  end
+
+  step_fn = fn {input, target}, %{model_state: state} ->
+    %{
+      model_state: state,
+      y_true: target,
+      y_pred: forward_model_fn.(state, input)
+    }
+  end
+
+  init_fn = Nx.Defn.jit(init_fn, on_conflict: :reuse)
+  step_fn = Nx.Defn.jit(step_fn, on_conflict: :reuse)
+  evaluator = Axon.Loop.loop(step_fn, init_fn, fn state -> state.metrics end)
+
+  metrics =
+    evaluator
+    |> Axon.Loop.metric(&CustomLoss.loss/2, "loss")
+    |> Axon.Loop.run(test_data, model_state)
+    |> Access.get(0)
+    |> Map.new(fn {k, v} -> {"validation_#{k}", v} end)
+    |> Map.merge(metrics, fn _, _, v -> v end)
+
+  {:continue, %{state | metrics: metrics}}
+end
+
 params =
   model
-  |> Axon.Loop.trainer(&CustomLoss.loss/2, Polaris.Optimizers.adam(learning_rate: 0.001))
+  |> Axon.Loop.trainer(&CustomLoss.loss/2, Polaris.Optimizers.adam())
   |> KinoAxon.kino_early_stop()
-  |> Axon.Loop.handle(:epoch_completed, render_example_handler)
-  |> Axon.Loop.validate(model, test_data)
+  |> Axon.Loop.handle_event(:epoch_completed, render_example_handler)
+  |> Axon.Loop.handle_event(:epoch_completed, validation_loop)
   |> KinoAxon.plot_losses()
-  |> Axon.Loop.run(train_data, %{}, epochs: 40, compiler: EXLA)
+  |> Axon.Loop.run(train_data, Axon.ModelState.empty(), epochs: 40, compiler: EXLA)
 
 :ok
 ```

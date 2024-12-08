@@ -8,8 +8,8 @@ Mix.install([
   {:kino_vega_lite, "~> 0.1"}
 ])
 
-Nx.Defn.default_options(compiler: EXLA)
 Nx.global_default_backend(EXLA.Backend)
+Nx.Defn.global_default_options(compiler: EXLA)
 
 alias VegaLite, as: Vl
 ```
