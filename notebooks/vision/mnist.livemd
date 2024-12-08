@@ -2,11 +2,14 @@
 
 ```elixir
 Mix.install([
-  {:axon, "~> 0.3.0"},
-  {:nx, "~> 0.4.0", override: true},
-  {:exla, "~> 0.4.0"},
-  {:req, "~> 0.3.1"}
+  {:axon, "~> 0.7"},
+  {:nx, "~> 0.9"},
+  {:exla, "~> 0.9"},
+  {:req, "~> 0.5"}
 ])
+
+Nx.global_default_backend(EXLA.Backend)
+Nx.Defn.global_default_options(compiler: EXLA)
 ```
 
 ## Introduction
@@ -86,7 +89,7 @@ params =
   model
   |> Axon.Loop.trainer(:categorical_cross_entropy, :adam)
   |> Axon.Loop.metric(:accuracy, "Accuracy")
-  |> Axon.Loop.run(Stream.zip(images, targets), %{}, epochs: 10, compiler: EXLA)
+  |> Axon.Loop.run(Stream.zip(images, targets), Axon.ModelState.empty(), epochs: 10)
 ```
 
 ## Prediction
